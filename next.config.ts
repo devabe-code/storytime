@@ -9,7 +9,7 @@ const nextConfig = {
           {
             key: "Content-Security-Policy",
             value: [
-              "default-src 'self'",
+              "default-src 'self' blob:",
               // Keep unsafe-inline only in dev if you must
               `script-src 'self'${isDev ? " 'unsafe-inline' 'unsafe-eval'" : ""}`,
               // ✅ allow blob: stylesheets for foliate
@@ -19,11 +19,11 @@ const nextConfig = {
               "img-src 'self' data: blob:",
               "font-src 'self' data: blob:",
               "media-src 'self' data: blob:",
-              "connect-src 'self'",
-              "frame-src 'self' blob:",
-              "object-src 'none'",
+              "connect-src 'self' blob: data: *",
+              "frame-src blob: data:",
+              "object-src blob: data:",
               "base-uri 'self'",
-              "form-action 'self'",
+              "form-action 'none'",
             ].join("; "),
           },
         ],

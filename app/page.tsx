@@ -1,9 +1,5 @@
-import EReader from "@/component/EReader";
+import FoliateReader from '@/components/FoliateReader';
 
 export default function Home() {
-  return (
-    <div className="h-screen">
-      <EReader initialSrc="/books/example.epub" />
-    </div>
-  );
+  return <FoliateReader initialSrc="/books/example2.epub" />;
 }
