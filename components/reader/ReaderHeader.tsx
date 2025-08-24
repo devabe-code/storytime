@@ -3,28 +3,39 @@
 import { useRouter } from 'next/navigation';
 import { useReaderStore } from './store';
 import { Button } from '@/components/ui/button';
-import { Languages, BookmarkPlus, PanelLeft, Settings2, Type, StickyNote, XCircle } from 'lucide-react';
+import { Languages, BookmarkPlus, Settings2, Type, StickyNote, XCircle } from 'lucide-react';
+import { useEffect, useCallback } from 'react';
 
 export default function ReaderHeader() {
   const router = useRouter();
-
-  const toggleSidebar = useReaderStore(s => s.toggleSidebar);
-  const addBookmarkAt = useReaderStore(s => s.addBookmarkAt);
-  const sectionIndex = useReaderStore(s => s.sectionIndex);
-  const sectionFraction = useReaderStore(s => s.sectionFraction);
+  const addBookmarkAtCurrent = useReaderStore(s => s.addBookmarkAtCurrent);
   const title = useReaderStore(s => s.title);
+  const teardownView = useReaderStore(s => s.teardownView);
+
+  const saveBookmark = useCallback(() => {
+    addBookmarkAtCurrent();
+  }, [addBookmarkAtCurrent]);
+
+  // Hotkey: B
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() === 'b' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        saveBookmark();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [saveBookmark]);
 
   return (
-    <div className="pointer-events-auto flex items-center justify-between gap-3 px-3 py-2 bg-background/95 backdrop-blur border-b rounded-b-2xl shadow">
+    <div className="pointer-events-auto w-full flex items-center justify-between gap-3 px-3 py-2 backdrop-blur">
       <div className="flex items-center gap-1.5">
-        <Button variant="ghost" size="icon" onClick={() => toggleSidebar(true)} aria-label="Open sidebar">
-          <PanelLeft className="h-5 w-5" />
-        </Button>
         <Button
           variant="ghost"
           size="icon"
-          onClick={() => addBookmarkAt(sectionIndex, sectionFraction)}
-          aria-label="Create bookmark"
+          onClick={saveBookmark}
+          aria-label="Add bookmark"
         >
           <BookmarkPlus className="h-5 w-5" />
         </Button>
@@ -45,7 +56,17 @@ export default function ReaderHeader() {
         <Button variant="ghost" size="icon" aria-label="Full settings">
           <Settings2 className="h-5 w-5" />
         </Button>
-        <Button variant="ghost" size="icon" onClick={() => router.push('/')} aria-label="Exit book">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => {
+            // make sure foliate's observers are disconnected before unmount
+            teardownView();
+            // allow the teardown to flush, then navigate
+            requestAnimationFrame(() => router.push('/'));
+          }}
+          aria-label="Exit book"
+        >
           <XCircle className="h-5 w-5" />
         </Button>
       </div>

@@ -172,3 +172,28 @@
   background: hsl(var(--primary) / 0.8);
   transform: scale(1.1);
 }
+
+/* Custom scrollbar styling for sidebar - hidden scrollbar */
+.sidebar-scrollbar {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* Internet Explorer 10+ */
+}
+
+.sidebar-scrollbar::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+}
+
+/* Hide scrollbars for all sidebar content areas */
+[data-slot="sidebar-content"] {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* Internet Explorer 10+ */
+}
+
+[data-slot="sidebar-content"]::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+}
+
+/* Hide scrollbars for scroll areas within the sidebar */
+[data-slot="sidebar"] [data-slot="scroll-area-scrollbar"] {
+  display: none !important;
+}
