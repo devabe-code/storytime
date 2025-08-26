@@ -10,6 +10,7 @@ export type Bookmark = {
   createdAt: number;   // Date.now()
   label: string;       // e.g. "Chapter 5" or "Page 12"
   target: BookmarkTarget;
+  snippet?: string;    // optional short quote
 };
 
 const KEY = "storytime.bookmarks.v1";

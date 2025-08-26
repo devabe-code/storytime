@@ -1,5 +1,5 @@
 "use client";
 
-export { default } from "../reader/_impl";
+export { default } from "../reader/page";
 
 

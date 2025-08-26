@@ -77,9 +77,139 @@ const readerCSS = ({ spacing, justify, hyphenate }: { spacing: number; justify: 
   aside[epub|type~="rearnote"] { display: none; }
 `;
 
+// Helpers (robust + CSS/footnote safe)
+// What we consider "readable" text containers:
+const READABLE_SEL =
+  "p, blockquote, li, h1, h2, h3, h4, h5, h6, article, section, main, .textLayer > div"; 
+// `.textLayer > div` helps with PDF.js text layers
+
+const EXCLUDE_SEL =
+  "script, style, nav, header, footer, aside, figure, figcaption, [hidden], [aria-hidden='true'], [role~='doc-footnote'], [role~='doc-endnote'], [epub\\:type~='footnote'], [epub\\:type~='endnote']";
+
+function nearestReadableBlock(rng: Range): Element | null {
+  let node: Node | null = rng.commonAncestorContainer;
+  if (node?.nodeType === Node.TEXT_NODE) node = node.parentElement;
+  let el = node as Element | null;
+  while (el && el !== el.ownerDocument.documentElement) {
+    if (el.matches?.(READABLE_SEL) && !el.matches(EXCLUDE_SEL) && hasReadableText(el)) {
+      return el;
+    }
+    el = el.parentElement;
+  }
+  // If ancestor isn't readable, look *inside* the range for the first readable element
+  const doc = rng.commonAncestorContainer.ownerDocument!;
+  const candidates = doc.querySelectorAll(READABLE_SEL);
+  for (const c of candidates as any as Element[]) {
+    if (c.matches(EXCLUDE_SEL)) continue;
+    if (!hasReadableText(c)) continue;
+    if (rangeIntersectsElement(rng, c)) return c;
+  }
+  return null;
+}
+
+function firstVisibleReadableBlock(doc: Document): Element | null {
+  const win = doc.defaultView!;
+  const vw = win.innerWidth, vh = win.innerHeight;
+  const candidates = Array.from(doc.querySelectorAll(READABLE_SEL)) as Element[];
+
+  // On-screen, not hidden, with enough text, closest to the top
+  let best: { el: Element; top: number } | null = null;
+  for (const el of candidates) {
+    if (el.matches(EXCLUDE_SEL)) continue;
+    if (!isVisible(el)) continue;
+    if (!hasReadableText(el)) continue;
+
+    const r = el.getBoundingClientRect();
+    const onScreen = r.bottom > 0 && r.top < vh && r.right > 0 && r.left < vw;
+    if (!onScreen) continue;
+
+    if (!best || r.top < best.top) best = { el, top: r.top };
+  }
+  return best?.el ?? null;
+}
+
+function extractReadableText(doc: Document, rootEl: Element): string {
+  // Walk only text nodes under allowed elements, skip hidden/assistive-only pieces
+  const walker = doc.createTreeWalker(rootEl, NodeFilter.SHOW_TEXT, {
+    acceptNode(node: Node) {
+      const t = node.nodeValue ?? "";
+      if (!t.trim()) return NodeFilter.FILTER_REJECT;
+      const el = (node as Text).parentElement;
+      if (!el) return NodeFilter.FILTER_REJECT;
+      if (el.closest(EXCLUDE_SEL)) return NodeFilter.FILTER_REJECT;
+      if (!isVisible(el)) return NodeFilter.FILTER_REJECT;
+      return NodeFilter.FILTER_ACCEPT;
+    },
+  });
+  let out = "";
+  let n: Node | null;
+  while ((n = walker.nextNode())) {
+    out += (n.nodeValue || "") + " ";
+    if (out.length > 600) break; // cap work
+  }
+  return normalizeWs(out).trim();
+}
+
+function isVisible(el: Element): boolean {
+  const st = (el.ownerDocument?.defaultView as any).getComputedStyle(el);
+  if (!st) return true;
+  if (st.display === "none" || st.visibility === "hidden") return false;
+  // avoid picking gigantic wrappers like <body>
+  const r = el.getBoundingClientRect();
+  return r.width > 1 && r.height > 1;
+}
+
+function hasReadableText(el: Element): boolean {
+  // quick check without full walk
+  const txt = normalizeWs(el.textContent || "");
+  // must contain some letters (not just numbers/punct/TOC dots)
+  return /[A-Za-z\u00C0-\u024F]/.test(txt) && txt.length >= 30;
+}
+
+function rangeIntersectsElement(r: Range, el: Element): boolean {
+  const elRange = el.ownerDocument!.createRange();
+  try {
+    elRange.selectNodeContents(el);
+    return r.compareBoundaryPoints(Range.END_TO_START, elRange) < 0 &&
+           r.compareBoundaryPoints(Range.START_TO_END, elRange) > 0;
+  } catch {
+    return false;
+  } finally {
+    elRange.detach?.();
+  }
+}
+
+function normalizeWs(s: string): string {
+  return s.replace(/\s+/g, " ");
+}
+
+function firstSentence(s: string): string {
+  // Prefer Intl.Segmenter if available
+  // @ts-ignore
+  const Seg = (Intl as any)?.Segmenter;
+  if (Seg) {
+    const seg = new Seg(undefined, { granularity: "sentence" });
+    const it = seg.segment(s)[Symbol.iterator]();
+    const first = it.next().value?.segment?.trim();
+    return first || s;
+  }
+  // Simple fallback: up to first sentence-ish delimiter
+  const m = s.match(/^[^.!?。！？]*[.!?。！？]/);
+  return (m?.[0] || s).trim();
+}
+
+function clipSnippet(s: string, max = 140): string {
+  const t = normalizeWs(s).trim();
+  return t.length > max ? t.slice(0, max - 1) + "…" : t;
+}
+
 export default function ReaderRoutePage() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const lastDocRef = useRef<Document | null>(null);
+  
+  // Track the active document + visible range
+  const lastVisibleRangeRef = useRef<Range | null>(null);
 
   // add these refs near your other refs/state
   const hasRunStartupRef = useRef(false);
@@ -116,6 +246,8 @@ export default function ReaderRoutePage() {
   useEffect(() => { if (view?.renderer?.setAttribute) view.renderer.setAttribute("flow", flow); }, [view, flow]);
   useEffect(() => { if (view) view.renderer?.setStyles?.(readerCSS({ spacing, justify, hyphenate })); }, [view, spacing, justify, hyphenate]);
 
+
+
   useEffect(() => {
     if (!bookId) return;
     setBookmarks(getBookmarks(bookId));
@@ -149,27 +281,65 @@ export default function ReaderRoutePage() {
       locLabel ||          // what you already show (Page/Loc)
       "Bookmark";
   
+    const snippet = getBookmarkSnippet() || undefined;
+
     const bm: Bookmark = {
       id: crypto.randomUUID(),
       bookId,
       createdAt: Date.now(),
       label,
       target,
+      snippet,
     };
   
     addBookmark(bm);
     setBookmarks(getBookmarks(bookId));
     toast.success("Bookmark saved");
-    console.log(bookmarks);
-    console.log(bm);
-    console.log(bookId);
-    console.log(getBookmarks(bookId));
-    console.log(locLabel);
 
   }
 
+  // Gets first paragraph from view
+  function getBookmarkSnippet(): string | null {
+    const doc = lastDocRef.current;
+    if (!doc) return null;
+
+    // 1) User selection (best)
+    const sel = doc.getSelection?.() ?? doc.defaultView?.getSelection?.();
+    if (sel && sel.rangeCount) {
+      const t = sel.toString().trim();
+      if (t) return clipSnippet(t);
+    }
+
+    // 2) From the visible range (best fallback)
+    const rng = lastVisibleRangeRef.current;
+    if (rng) {
+      const el = nearestReadableBlock(rng);
+      const text = el ? extractReadableText(doc, el) : "";
+      if (text) return firstSentence(clipSnippet(text));
+    }
+
+    // 3) First visible readable block on screen
+    const el = firstVisibleReadableBlock(doc);
+    if (el) {
+      const text = extractReadableText(doc, el);
+      if (text) return firstSentence(clipSnippet(text));
+    }
+
+    return null;
+  }
+
+
+
+
+
   const handleRelocate = useCallback((e: CustomEvent) => {
     const d = e.detail || {};
+    
+    // keep the latest visible range (emitted by paginator/fxl relocate)
+    if (d.range) {
+      lastVisibleRangeRef.current = d.range;
+    }
+    
     lastRelocateRef.current = d;               // save it for bookmarks
     setFraction(d.fraction ?? 0);
   
@@ -191,11 +361,24 @@ export default function ReaderRoutePage() {
     const el = (customEvent?.currentTarget || customEvent?.target) as HTMLElement;
     const doc: Document | undefined = customEvent?.detail?.doc;
     if (!doc) return;
+    
+    // keep the latest loaded section/page doc
+    if (customEvent.detail?.doc) {
+      lastDocRef.current = customEvent.detail.doc;
+    }
+    
     const keyHandler = (ev: KeyboardEvent) => {
       if (ev.key === "ArrowLeft" || ev.key === "h") (el as FoliateViewElement)?.goLeft?.();
       if (ev.key === "ArrowRight" || ev.key === "l") (el as FoliateViewElement)?.goRight?.();
+      
+      // Bookmark shortcuts
+      if (ev.key === "b" && !ev.ctrlKey && !ev.metaKey) {
+        ev.preventDefault();
+        handleAddBookmark();
+      }
     };
-    doc.addEventListener("keydown", keyHandler);
+    doc.addEventListener("keydown", keyHandler, { capture: true });
+    lastDocRef.current = doc;
   }, []);
 
   const openSource = useCallback(async (input: File | string) => {
@@ -243,7 +426,7 @@ export default function ReaderRoutePage() {
       setView(el);
 
       el.addEventListener("relocate", handleRelocate as EventListener);
-      el.addEventListener("load", handleLoad);
+      el.addEventListener("load", handleLoad as EventListener);
 
       await el.open(src as File);
 
@@ -375,9 +558,35 @@ export default function ReaderRoutePage() {
   }, [view]);
 
   const onRemove = useCallback((bm: Bookmark) => {
-    removeBookmark(bm.id, bookId);
-    setBookmarks(getBookmarks(bookId));
+    // Add confirmation dialog to prevent accidental deletion
+    if (confirm(`Are you sure you want to remove the bookmark "${bm.label}"?`)) {
+      removeBookmark(bookId, bm.id);
+      setBookmarks(getBookmarks(bookId));
+      toast.success("Bookmark removed");
+    }
   }, [bookId]);
+
+  // Global keyboard shortcuts for bookmark management
+  useEffect(() => {
+    const handleGlobalKeydown = (ev: KeyboardEvent) => {
+      // Only handle when no input elements are focused
+      if (ev.target instanceof HTMLInputElement || ev.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      // Delete/Backspace to remove last bookmark
+      if ((ev.key === "Delete" || ev.key === "Backspace") && !ev.ctrlKey && !ev.metaKey) {
+        if (bookmarks.length > 0) {
+          ev.preventDefault();
+          const lastBookmark = bookmarks[0]; // bookmarks are already sorted by newest first
+          onRemove(lastBookmark);
+        }
+      }
+    };
+
+    document.addEventListener("keydown", handleGlobalKeydown);
+    return () => document.removeEventListener("keydown", handleGlobalKeydown);
+  }, [bookmarks, onRemove]);
 
     return (
     <SidebarProvider defaultOpen={true}>
@@ -392,6 +601,7 @@ export default function ReaderRoutePage() {
             bookmarks={bookmarks}
             onGoTo={onGoTo}
             onRemove={onRemove}
+            onAddBookmark={handleAddBookmark}
           />
         </Sidebar>
 

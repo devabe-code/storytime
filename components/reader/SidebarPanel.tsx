@@ -18,6 +18,7 @@ export function SidebarPanel({
   bookmarks,
   onGoTo,
   onRemove,
+  onAddBookmark,
 }: {
   title: string;
   author: string;
@@ -27,8 +28,31 @@ export function SidebarPanel({
   bookmarks: Bookmark[];
   onGoTo: (bm: Bookmark) => void;
   onRemove: (bm: Bookmark) => void;
+  onAddBookmark?: () => void;
 }) {
   const [activeTab, setActiveTab] = React.useState("toc");
+
+  // Keyboard shortcuts for tab switching
+  React.useEffect(() => {
+    const handleKeydown = (ev: KeyboardEvent) => {
+      // Only handle when no input elements are focused
+      if (ev.target instanceof HTMLInputElement || ev.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      // T for TOC, M for bookmarks
+      if (ev.key === "t" && !ev.ctrlKey && !ev.metaKey) {
+        ev.preventDefault();
+        setActiveTab("toc");
+      } else if (ev.key === "m" && !ev.ctrlKey && !ev.metaKey) {
+        ev.preventDefault();
+        setActiveTab("bookmarks");
+      }
+    };
+
+    document.addEventListener("keydown", handleKeydown);
+    return () => document.removeEventListener("keydown", handleKeydown);
+  }, []);
   return (
     <div className="flex flex-col w-full h-full min-h-0">
       <div className="p-4 space-y-2">
@@ -67,8 +91,10 @@ export function SidebarPanel({
                   (activeTab === "toc" ? " text-foreground" : " text-muted-foreground")
                 }
                 aria-pressed={activeTab === "toc"}
+                title="Table of Contents (T)"
               >
                 <Book className="h-4 w-4" />
+                <span className="text-xs">T</span>
               </button>
               <button
                 type="button"
@@ -78,8 +104,10 @@ export function SidebarPanel({
                   (activeTab === "bookmarks" ? " text-foreground" : " text-muted-foreground")
                 }
                 aria-pressed={activeTab === "bookmarks"}
+                title="Bookmarks (M)"
               >
                 <BookmarkIcon className="h-4 w-4" />
+                <span className="text-xs">M</span>
               </button>
             </div>
           </div>
@@ -95,7 +123,7 @@ export function SidebarPanel({
             <div className="text-sm text-muted-foreground">No table of contents</div>)
         )}
           {activeTab === "bookmarks" && (
-          <BookmarksPanel bookmarks={bookmarks} onGoTo={onGoTo} onRemove={onRemove} />
+          <BookmarksPanel bookmarks={bookmarks} onGoTo={onGoTo} onRemove={onRemove} onAddBookmark={onAddBookmark} />
         )}
       </div>
       </ScrollArea>
