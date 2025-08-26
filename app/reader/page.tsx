@@ -10,6 +10,7 @@ import { ReaderSurface } from "@/components/reader/ReaderSurface";
 import { BottomProgress } from "@/components/reader/BottomProgress";
 import { setProgress } from "@/lib/library";
 import { saveLastBook, loadLastBook } from "@/lib/persist";
+import { addBookmark, getBookmarks, removeBookmark, type Bookmark } from "@/lib/reader/bookmarks";
 
 // Register the <foliate-view> web component on the client only
 const ensureView = () => import("@/lib/reader/view").catch(() => {});
@@ -104,7 +105,10 @@ export default function ReaderRoutePage() {
   const [hyphenate, setHyphenate] = useState(true);
   const [spacing, setSpacing] = useState(1.4);
   const [bookId, setBookId] = useState<string>("");
+  const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
+
   const bookIdRef = useRef<string>("");
+  const lastRelocateRef = useRef<any | null>(null);
 
   useEffect(() => { bookIdRef.current = bookId; }, [bookId]);
 
@@ -112,13 +116,74 @@ export default function ReaderRoutePage() {
   useEffect(() => { if (view?.renderer?.setAttribute) view.renderer.setAttribute("flow", flow); }, [view, flow]);
   useEffect(() => { if (view) view.renderer?.setStyles?.(readerCSS({ spacing, justify, hyphenate })); }, [view, spacing, justify, hyphenate]);
 
-  const handleRelocate = useCallback((e: Event) => {
-    const customEvent = e as CustomEvent<RelocateEventDetail>;
-    const { fraction, location, pageItem } = customEvent.detail || {};
-    setFraction(fraction ?? 0);
-    setLocLabel(pageItem ? `Page ${pageItem.label}` : `Loc ${location?.current ?? 0}`);
-    const currentBookId = bookIdRef.current;
-    if (currentBookId) setProgress(currentBookId, fraction ?? 0);
+  useEffect(() => {
+    if (!bookId) return;
+    setBookmarks(getBookmarks(bookId));
+  }, [bookId]);
+
+  function handleAddBookmark() {
+    if (!bookId) return;
+  
+    // try to produce the best possible target from lastRelocate
+    const d = lastRelocateRef.current || {};
+    let target:
+      | { type: "cfi"; value: string }
+      | { type: "href"; value: string }
+      | { type: "page"; value: number }
+      | { type: "fraction"; value: number };
+  
+    if (d.cfi) {
+      target = { type: "cfi", value: d.cfi };
+    } else if (d.href) {
+      target = { type: "href", value: d.href };
+    } else if (d.pageItem?.index != null) {
+      target = { type: "page", value: d.pageItem.index };
+    } else {
+      // safe fallback: jump by fraction
+      target = { type: "fraction", value: d.fraction ?? fraction };
+    }
+  
+    const label =
+      d?.pageItem?.label ||
+      d?.tocItem?.label || // current chapter if available
+      locLabel ||          // what you already show (Page/Loc)
+      "Bookmark";
+  
+    const bm: Bookmark = {
+      id: crypto.randomUUID(),
+      bookId,
+      createdAt: Date.now(),
+      label,
+      target,
+    };
+  
+    addBookmark(bm);
+    setBookmarks(getBookmarks(bookId));
+    toast.success("Bookmark saved");
+    console.log(bookmarks);
+    console.log(bm);
+    console.log(bookId);
+    console.log(getBookmarks(bookId));
+    console.log(locLabel);
+
+  }
+
+  const handleRelocate = useCallback((e: CustomEvent) => {
+    const d = e.detail || {};
+    lastRelocateRef.current = d;               // save it for bookmarks
+    setFraction(d.fraction ?? 0);
+  
+    // nice label for the progress bar; reuse for bookmarks too
+    const label = d?.pageItem?.label
+      ? `Page ${d.pageItem.label}`
+      : d?.location?.current
+      ? `Loc ${d.location.current}`
+      : "";
+    setLocLabel(label);
+  
+    // keep saving reading progress like you already do
+    const id = bookIdRef.current;
+    if (id) setProgress(id, d.fraction ?? 0);
   }, []);
 
   const handleLoad = useCallback(async (e: Event) => {
@@ -177,7 +242,7 @@ export default function ReaderRoutePage() {
       containerRef.current?.replaceChildren(el);
       setView(el);
 
-      el.addEventListener("relocate", handleRelocate);
+      el.addEventListener("relocate", handleRelocate as EventListener);
       el.addEventListener("load", handleLoad);
 
       await el.open(src as File);
@@ -305,7 +370,16 @@ export default function ReaderRoutePage() {
     setSidebarOpen(false);
   }, [view]);
 
-  return (
+  const onGoTo = useCallback((bm: Bookmark) => {
+    view?.goTo?.(bm.target.value as string);
+  }, [view]);
+
+  const onRemove = useCallback((bm: Bookmark) => {
+    removeBookmark(bm.id, bookId);
+    setBookmarks(getBookmarks(bookId));
+  }, [bookId]);
+
+    return (
     <SidebarProvider defaultOpen={true}>
       <SidebarInset>
         <Sidebar>
@@ -315,7 +389,9 @@ export default function ReaderRoutePage() {
             coverUrl={coverUrl}
             toc={toc}
             onSelectHref={onSelectHref}
-            
+            bookmarks={bookmarks}
+            onGoTo={onGoTo}
+            onRemove={onRemove}
           />
         </Sidebar>
 
@@ -341,6 +417,7 @@ export default function ReaderRoutePage() {
             author={author}
             toc={toc}
             onSelectHref={onSelectHref}
+            onBookmark={handleAddBookmark}
           />
 
           <ReaderSurface containerRef={containerRef} onDrop={onDrop} onDragOver={onDragOver} />

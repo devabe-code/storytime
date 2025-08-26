@@ -3,7 +3,7 @@
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Settings, List, ChevronLeft, ChevronRight, Upload, PanelLeftOpen, PanelLeftClose } from "lucide-react";
+import { Settings, List, ChevronLeft, ChevronRight, Upload, PanelLeftOpen, PanelLeftClose, Bookmark } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Slider } from "@/components/ui/slider";
@@ -32,6 +32,7 @@ export function TopBar({
   author,
   toc,
   onSelectHref,
+  onBookmark,
 }: {
   sidebarOpen: boolean;
   setSidebarOpen: (open: boolean) => void;
@@ -46,6 +47,7 @@ export function TopBar({
   spacing: number;
   setSpacing: (v: number) => void;
   onChooseFile: () => void;
+  onBookmark: () => void;
   coverUrl?: string;
   title: string;
   author: string;
@@ -94,6 +96,7 @@ export function TopBar({
         <Button variant="ghost" size="icon" onClick={onNext} title="Next">
           <ChevronRight className="h-5 w-5"/>
         </Button>
+        <Button variant="ghost" size="icon" onClick={onBookmark} title="Bookmark"><Bookmark className="h-5 w-5"/></Button>
       </div>
 
       {/* Settings */}
