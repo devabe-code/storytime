@@ -91,10 +91,9 @@ export function SidebarPanel({
                   (activeTab === "toc" ? " text-foreground" : " text-muted-foreground")
                 }
                 aria-pressed={activeTab === "toc"}
-                title="Table of Contents (T)"
+                title="Table of Contents"
               >
                 <Book className="h-4 w-4" />
-                <span className="text-xs">T</span>
               </button>
               <button
                 type="button"
@@ -104,10 +103,9 @@ export function SidebarPanel({
                   (activeTab === "bookmarks" ? " text-foreground" : " text-muted-foreground")
                 }
                 aria-pressed={activeTab === "bookmarks"}
-                title="Bookmarks (M)"
+                title="Bookmarks"
               >
                 <BookmarkIcon className="h-4 w-4" />
-                <span className="text-xs">M</span>
               </button>
             </div>
           </div>

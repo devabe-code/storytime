@@ -301,6 +301,10 @@ const ViewClass = typeof HTMLElement !== 'undefined' ? class View extends HTMLEl
     });
   }
 
+  disconnectedCallback() {
+    try { (this as any).renderer?.destroy?.() } catch {}
+  }
+
   async open(book: any) {
     if (typeof book === "string" || typeof book.arrayBuffer === "function" || book.isDirectory)
       book = await makeBook(book);
@@ -320,6 +324,12 @@ const ViewClass = typeof HTMLElement !== 'undefined' ? class View extends HTMLEl
     }
 
     this.isFixedLayout = this.book.rendition?.layout === 'pre-paginated';
+    
+    // if re-opening, clean up the old renderer first
+    if (this.renderer?.destroy) {
+        try { this.renderer.destroy() } catch {}
+    }
+    
     if (this.isFixedLayout) {
         await import('@/lib/ui/fixed-layout');
         this.renderer = document.createElement('foliate-fxl');
@@ -365,8 +375,11 @@ const ViewClass = typeof HTMLElement !== 'undefined' ? class View extends HTMLEl
   }
 
   close() {
-    this.renderer?.destroy();
-    this.renderer?.remove();
+    if (this.renderer?.destroy) {
+      try { this.renderer.destroy() } catch {}
+    }
+    try { this.renderer?.remove() } catch {}
+    this.renderer = null;
     this.#sectionProgress = null;
     this.#tocProgress = null;
     this.#pageProgress = null;

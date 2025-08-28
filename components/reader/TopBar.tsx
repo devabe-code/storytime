@@ -2,14 +2,10 @@
 
 import * as React from "react";
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Settings, List, ChevronLeft, ChevronRight, Upload, PanelLeftOpen, PanelLeftClose, Bookmark } from "lucide-react";
+import { List, ChevronLeft, ChevronRight, Upload, PanelLeftOpen, PanelLeftClose, Bookmark } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Slider } from "@/components/ui/slider";
 import { TocList, TOCItem } from "./TocList";
-import { toast } from "sonner";
-import { clearLastBook } from "@/lib/persist";
 
 import { useSidebar } from "@/components/ui/sidebar";
 
@@ -18,14 +14,6 @@ export function TopBar({
   setSidebarOpen,
   onPrev,
   onNext,
-  flow,
-  setFlow,
-  justify,
-  setJustify,
-  hyphenate,
-  setHyphenate,
-  spacing,
-  setSpacing,
   onChooseFile,
   coverUrl,
   title,
@@ -33,26 +21,26 @@ export function TopBar({
   toc,
   onSelectHref,
   onBookmark,
+  onOpenSettings,
+  onFontSmaller,
+  onFontLarger,
+  fontPercent,
 }: {
   sidebarOpen: boolean;
   setSidebarOpen: (open: boolean) => void;
   onPrev: () => void;
   onNext: () => void;
-  flow: "paginated" | "scrolled";
-  setFlow: (v: "paginated" | "scrolled") => void;
-  justify: boolean;
-  setJustify: (v: boolean) => void;
-  hyphenate: boolean;
-  setHyphenate: (v: boolean) => void;
-  spacing: number;
-  setSpacing: (v: number) => void;
   onChooseFile: () => void;
   onBookmark: () => void;
+  onOpenSettings: () => void;
   coverUrl?: string;
   title: string;
   author: string;
   toc: TOCItem[];
   onSelectHref: (href?: string) => void;
+  onFontSmaller: () => void;
+  onFontLarger: () => void;
+  fontPercent: number;
 }) {
   const { open: desktopOpen, setOpen: setDesktopOpen } = useSidebar();
   return (
@@ -99,42 +87,28 @@ export function TopBar({
         <Button variant="ghost" size="icon" onClick={onBookmark} title="Bookmark"><Bookmark className="h-5 w-5"/></Button>
       </div>
 
+      { /* Book Title and Author */}
+      <div className="flex items-center gap-2">
+        <div className="text-sm font-bold">{title}</div>
+        <span>:</span>
+        <div className="text-sm text-muted-foreground">{author}</div>
+      </div>
+
       {/* Settings */}
       <div className="flex items-center gap-2">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label="Settings"><Settings className="h-5 w-5"/></Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-64">
-            <DropdownMenuLabel>Layout</DropdownMenuLabel>
-            <DropdownMenuRadioGroup value={flow} onValueChange={(v: string) => setFlow(v as "paginated" | "scrolled")}>
-              <DropdownMenuRadioItem value="paginated">Paginated</DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="scrolled">Scrolled</DropdownMenuRadioItem>
-            </DropdownMenuRadioGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel>Typography</DropdownMenuLabel>
-            <DropdownMenuItem onClick={()=> setJustify(!justify)}>
-              {justify ? "✓ " : "○ "} Justify paragraphs
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={()=> setHyphenate(!hyphenate)}>
-              {hyphenate ? "✓ " : "○ "} Hyphenation
-            </DropdownMenuItem>
-            <div className="px-2 py-3">
-              <div className="text-xs text-muted-foreground mb-1">Line height</div>
-              <Slider value={[spacing]} min={1.2} max={2} step={0.05} onValueChange={(v)=> setSpacing(v[0])} />
-            </div>
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel>Storage</DropdownMenuLabel>
-            <DropdownMenuItem
-              onClick={async () => {
-                await clearLastBook();
-                toast.success("Saved book cleared");
-              }}
-            >
-              Clear saved book
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {/* Font size controls */}
+        <div className="hidden sm:flex items-center gap-1 mr-1" aria-label="Font size">
+          <Button variant="outline" size="icon" onClick={onFontSmaller} title="Decrease font size">
+            A-
+          </Button>
+          <div className="text-xs w-10 text-center tabular-nums" title="Font size">
+            {fontPercent}%
+          </div>
+          <Button variant="outline" size="icon" onClick={onFontLarger} title="Increase font size">
+            A+
+          </Button>
+        </div>
+        <Button variant="outline" onClick={onOpenSettings}>Settings</Button>
         <Button variant="outline" size="sm" onClick={onChooseFile}><Upload className="mr-2 h-4 w-4"/>Open</Button>
       </div>
     </div>

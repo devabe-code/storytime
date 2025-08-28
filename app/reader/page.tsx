@@ -11,6 +11,7 @@ import { BottomProgress } from "@/components/reader/BottomProgress";
 import { setProgress } from "@/lib/library";
 import { saveLastBook, loadLastBook } from "@/lib/persist";
 import { addBookmark, getBookmarks, removeBookmark, type Bookmark } from "@/lib/reader/bookmarks";
+import { SettingsDialog } from "@/components/reader/SettingsDialog";
 
 // Register the <foliate-view> web component on the client only
 const ensureView = () => import("@/lib/reader/view").catch(() => {});
@@ -51,9 +52,39 @@ interface FoliateViewElement extends HTMLElement {
   };
 }
 
-const readerCSS = ({ spacing, justify, hyphenate }: { spacing: number; justify: boolean; hyphenate: boolean }) => `
+const readerCSS = ({
+  spacing,
+  justify,
+  hyphenate,
+  fontPercent,
+  overrideFont,
+  fontFamily,
+  fontWeight,
+  letterSpacing,
+  customFontCSS,
+}: {
+  spacing: number;
+  justify: boolean;
+  hyphenate: boolean;
+  fontPercent: number;
+  overrideFont: boolean;
+  fontFamily: string;
+  fontWeight: number;
+  letterSpacing: number;
+  customFontCSS?: string | null;
+}) => `
   @namespace epub "http://www.idpf.org/2007/ops";
-  html { color-scheme: light dark; }
+  ${customFontCSS ?? ""}
+  html { color-scheme: light dark; font-size: ${fontPercent}%; }
+  ${overrideFont ? `
+  html, body, body *:not(i):not(em):not(svg):not([style*="font-family"]) {
+    font-family: ${JSON.stringify(fontFamily)}, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Noto Sans", "Liberation Sans", sans-serif !important;
+  }
+  body, p, li, blockquote, dd, h1, h2, h3, h4, h5, h6 {
+    font-weight: ${fontWeight};
+    letter-spacing: ${letterSpacing}px;
+  }
+  ` : ""}
   @media (prefers-color-scheme: dark) { a:link { color: lightblue; } }
   p, li, blockquote, dd {
     line-height: ${spacing};
@@ -203,6 +234,42 @@ function clipSnippet(s: string, max = 140): string {
   return t.length > max ? t.slice(0, max - 1) + "…" : t;
 }
 
+// Compute a hierarchical chapter path from the TOC for a given href
+function getChapterPathFromToc(tocItems: TOCItem[] | undefined, href: string): string[] | undefined {
+  if (!tocItems || !href) return undefined;
+  const norm = (s: string) => {
+    try {
+      const base = s.split("#")[0] || s;
+      return decodeURIComponent(base);
+    } catch {
+      return s.split("#")[0] || s;
+    }
+  };
+  const target = norm(href);
+
+  const path: string[] = [];
+  let best: string[] | undefined;
+
+  const walk = (items: TOCItem[], trail: string[]) => {
+    for (const it of items) {
+      const label = it.label || "";
+      const nextTrail = label ? [...trail, label] : trail;
+      const itemHref = it.href ? norm(it.href) : undefined;
+
+      if (itemHref && (target === itemHref || target.endsWith(itemHref) || itemHref.endsWith(target))) {
+        // exact or suffix match
+        if (!best || nextTrail.length > best.length) {
+          best = nextTrail;
+        }
+      }
+      if (it.subitems?.length) walk(it.subitems, nextTrail);
+    }
+  };
+
+  walk(tocItems, path);
+  return best && best.length ? best : undefined;
+}
+
 export default function ReaderRoutePage() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -234,6 +301,13 @@ export default function ReaderRoutePage() {
   const [justify, setJustify] = useState(true);
   const [hyphenate, setHyphenate] = useState(true);
   const [spacing, setSpacing] = useState(1.4);
+  const [fontPercent, setFontPercent] = useState(100);
+  const [overrideFont, setOverrideFont] = useState(false);
+  const [fontFamily, setFontFamily] = useState<string>("Georgia");
+  const [fontWeight, setFontWeight] = useState<number>(400);
+  const [letterSpacing, setLetterSpacing] = useState<number>(0);
+  const [customFont, setCustomFont] = useState<{ family: string; url: string; format?: string } | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [bookId, setBookId] = useState<string>("");
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
 
@@ -244,9 +318,36 @@ export default function ReaderRoutePage() {
 
   useEffect(() => { ensureView(); }, []);
   useEffect(() => { if (view?.renderer?.setAttribute) view.renderer.setAttribute("flow", flow); }, [view, flow]);
-  useEffect(() => { if (view) view.renderer?.setStyles?.(readerCSS({ spacing, justify, hyphenate })); }, [view, spacing, justify, hyphenate]);
+  // Build @font-face CSS when a custom font is present
+  const customFontCSS = React.useMemo(() => {
+    if (!customFont) return null;
+    const fmt = customFont.format || undefined;
+    const formatDecl = fmt ? ` format("${fmt}")` : "";
+    return `@font-face { font-family: ${JSON.stringify(customFont.family)}; src: url(${JSON.stringify(customFont.url)})${formatDecl}; font-display: swap; }`;
+  }, [customFont]);
+
+  useEffect(() => {
+    if (view) view.renderer?.setStyles?.(readerCSS({ spacing, justify, hyphenate, fontPercent, overrideFont, fontFamily: customFont?.family ?? fontFamily, fontWeight, letterSpacing, customFontCSS }));
+  }, [view, spacing, justify, hyphenate, fontPercent, overrideFont, fontFamily, fontWeight, letterSpacing, customFontCSS, customFont]);
 
 
+
+
+
+  // Global 'b' shortcut so it works even when focus is outside the book document
+  useEffect(() => {
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key !== "b" || ev.ctrlKey || ev.metaKey) return;
+      // ignore when typing in inputs/textareas or contenteditable
+      const t = ev.target as Element | null;
+      if (t && (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || (t as any).isContentEditable)) return;
+      ev.preventDefault();
+      handleAddBookmark();
+      console.log("b");
+    };
+    document.addEventListener("keydown", onKey, { capture: true });
+    return () => document.removeEventListener("keydown", onKey, { capture: true } as any);
+  }, []);
 
   useEffect(() => {
     if (!bookId) return;
@@ -283,6 +384,10 @@ export default function ReaderRoutePage() {
   
     const snippet = getBookmarkSnippet() || undefined;
 
+    // Try to compute a nested chapter path using current TOC and href
+    const hrefForPath = d.href || (d.tocItem?.href) || (target.type === "href" ? (target as any).value : undefined);
+    const chapterPath = hrefForPath ? getChapterPathFromToc(toc, hrefForPath) : undefined;
+
     const bm: Bookmark = {
       id: crypto.randomUUID(),
       bookId,
@@ -290,6 +395,7 @@ export default function ReaderRoutePage() {
       label,
       target,
       snippet,
+      chapterPath,
     };
   
     addBookmark(bm);
@@ -327,8 +433,6 @@ export default function ReaderRoutePage() {
 
     return null;
   }
-
-
 
 
 
@@ -464,7 +568,7 @@ export default function ReaderRoutePage() {
       setBookId(typeof input === "string" ? input : `upload:${src.name}:${src.size}`);
 
       if (el?.renderer?.setAttribute) el.renderer.setAttribute("flow", flow);
-      el?.renderer?.setStyles?.(readerCSS({ spacing, justify, hyphenate }));
+      el?.renderer?.setStyles?.(readerCSS({ spacing, justify, hyphenate, fontPercent, overrideFont, fontFamily: customFont?.family ?? fontFamily, fontWeight, letterSpacing, customFontCSS }));
 
       // Toast exactly once per new key
       if (openedKeyRef.current !== key) {
@@ -478,6 +582,18 @@ export default function ReaderRoutePage() {
       isOpeningRef.current = false;
     }
   }, [flow, spacing, justify, hyphenate, handleLoad, handleRelocate, view, sourceKey]);
+
+  // Cleanup when component unmounts
+  useEffect(() => {
+    return () => {
+      if (view) {
+        try { view.removeEventListener('relocate', handleRelocate as any) } catch {}
+        try { view.removeEventListener('load', handleLoad as any) } catch {}
+        // removing the element will trigger disconnectedCallback -> renderer.destroy()
+        try { view.remove() } catch {}
+      }
+    };
+  }, [view, handleRelocate, handleLoad]);
 
   const onChooseFile = useCallback(() => fileInputRef.current?.click(), []);
   const onFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -566,6 +682,10 @@ export default function ReaderRoutePage() {
     }
   }, [bookId]);
 
+  const onOpenSettings = useCallback(() => {
+    setSettingsOpen(true);
+  }, []);
+
   // Global keyboard shortcuts for bookmark management
   useEffect(() => {
     const handleGlobalKeydown = (ev: KeyboardEvent) => {
@@ -613,14 +733,6 @@ export default function ReaderRoutePage() {
             setSidebarOpen={setSidebarOpen}
             onPrev={() => view?.goLeft?.()}
             onNext={() => view?.goRight?.()}
-            flow={flow}
-            setFlow={(v: "paginated" | "scrolled") => setFlow(v)}
-            justify={justify}
-            setJustify={(v:boolean)=> setJustify(v)}
-            hyphenate={hyphenate}
-            setHyphenate={(v:boolean)=> setHyphenate(v)}
-            spacing={spacing}
-            setSpacing={(v:number)=> setSpacing(v)}
             onChooseFile={onChooseFile}
             coverUrl={coverUrl}
             title={title}
@@ -628,11 +740,50 @@ export default function ReaderRoutePage() {
             toc={toc}
             onSelectHref={onSelectHref}
             onBookmark={handleAddBookmark}
+            onOpenSettings={onOpenSettings}
+            onFontSmaller={() => setFontPercent(p => Math.max(80, Math.round((p - 10) / 5) * 5))}
+            onFontLarger={() => setFontPercent(p => Math.min(200, Math.round((p + 10) / 5) * 5))}
+            fontPercent={fontPercent}
           />
 
           <ReaderSurface containerRef={containerRef} onDrop={onDrop} onDragOver={onDragOver} />
 
           <BottomProgress fraction={fraction} locLabel={locLabel} onChange={(v)=> view?.goToFraction?.(v)} />
+
+          <SettingsDialog
+            open={settingsOpen}
+            onOpenChange={setSettingsOpen}
+            overrideFont={overrideFont}
+            setOverrideFont={setOverrideFont}
+            fontFamily={customFont?.family ?? fontFamily}
+            setFontFamily={(v) => setFontFamily(v)}
+            availableFamilies={["Georgia", "Times New Roman", "Merriweather", "Inter", "Roboto", "Arial", "Helvetica", "Serif", "Sans-Serif"]}
+            fontPercent={fontPercent}
+            setFontPercent={(v) => setFontPercent(Math.max(50, Math.min(300, Math.round(v))))}
+            fontWeight={fontWeight}
+            setFontWeight={(v) => setFontWeight(Math.max(100, Math.min(900, Math.round(v / 50) * 50)))}
+            lineHeight={spacing}
+            setLineHeight={setSpacing}
+            letterSpacing={letterSpacing}
+            setLetterSpacing={setLetterSpacing}
+            hyphenate={hyphenate}
+            setHyphenate={setHyphenate}
+            justify={justify}
+            setJustify={setJustify}
+            customFont={customFont}
+            onAddCustomFont={async (family, file) => {
+              try {
+                const url = URL.createObjectURL(file);
+                setCustomFont({ family, url, format: undefined });
+                setFontFamily(family);
+                setOverrideFont(true);
+                toast.success("Custom font added");
+              } catch (e) {
+                console.error(e);
+                toast.error("Failed to add custom font");
+              }
+            }}
+          />
         </main>
 
         <Toaster richColors position="bottom-right" /> 

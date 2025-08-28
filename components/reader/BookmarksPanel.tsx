@@ -52,14 +52,8 @@ export function BookmarksPanel({ bookmarks, onGoTo, onRemove, onAddBookmark }: P
 function EmptyState({ onAddBookmark }: { onAddBookmark?: () => void }) {
   return (
     <div className="rounded-lg border border-dashed bg-background/40 p-4 text-sm text-muted-foreground flex items-center justify-between">
-      <div>
-        <div className="font-medium text-foreground">No bookmarks yet</div>
-        <div className="mt-1">
-          Save your place, or highlight a line to save it as a quote.
-        </div>
-      </div>
       {onAddBookmark ? (
-        <Button variant="outline" size="sm" onClick={onAddBookmark}>
+        <Button variant="outline" size="sm" onClick={onAddBookmark} className="w-full">
           <Plus className="h-4 w-4 mr-1" />
           Add bookmark
         </Button>
@@ -80,8 +74,9 @@ function BookmarkItem({
   const createdISO = new Date(bm.createdAt).toISOString(); // SSR/CSR-stable
   const createdShort = createdISO.slice(0, 16).replace("T", " "); // "YYYY-MM-DD HH:MM"
 
-  const chapter =
-    bm.target.type === "href" ? chapterFromHref(bm.target.value) : undefined;
+  const chapterBreadcrumb = bm.chapterPath && bm.chapterPath.length
+    ? bm.chapterPath.join(" › ")
+    : bm.target.type === "href" ? chapterFromHref(bm.target.value) : undefined;
 
   const pageOrLoc = pageOrLocFromText(bm.label);
 
@@ -96,9 +91,9 @@ function BookmarkItem({
             title={createdISO}
             className="flex-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-md p-1"
           >
-            {chapter && (
+            {chapterBreadcrumb && (
               <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">
-                {chapter}
+                {chapterBreadcrumb}
               </div>
             )}
 

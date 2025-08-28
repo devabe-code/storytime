@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 
-import { getLibrary, saveLibrary, getProgressMap, removeFromLibrary, hasUploadWithFingerprint, type LibraryItem } from "../lib/library";
+import { getLibrary, saveLibrary, getProgressMap, removeFromLibrary, hasUploadWithFingerprint, setProgress, type LibraryItem } from "../lib/library";
+import Image from "next/image";
 
 interface BookMetadata {
   getCover?: () => Promise<Blob | null>;
@@ -38,24 +39,26 @@ const SAMPLES: LibraryItem[] = [
 function BookCard({ item, progress, onRemove }: { item: LibraryItem; progress?: number; onRemove?: (id: string) => void }) {
   const router = useRouter();
   const pct = progress ? Math.round(progress * 100) : 0;
+  console.log(item.cover);
   return (
     <div className="group relative rounded-lg border bg-card text-card-foreground shadow-sm overflow-hidden">
       <div className="aspect-[3/4] bg-muted overflow-hidden">
         {item.cover ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={item.cover} alt="cover" className="h-full w-full object-cover" />
+          <Image src={item.cover} alt="cover" className="h-full w-full object-cover" width={100} height={100} />
         ) : (
           <div className="h-full w-full flex items-center justify-center text-muted-foreground">No cover</div>
         )}
-        {item.source === "upload" && onRemove ? (
-          <button
+        {onRemove ? (
+          <Button
             type="button"
+            variant="default"
             onClick={() => onRemove(item.id)}
-            className="absolute top-2 right-2 inline-flex items-center justify-center h-7 w-7 rounded-md bg-background/70 backdrop-blur border shadow hover:bg-background"
+            className="absolute top-2 right-2 inline-flex items-center justify-center h-7 w-7 rounded-md"
             aria-label="Remove from library"
           >
             ×
-          </button>
+          </Button>
         ) : null}
       </div>
       <div className="p-3 space-y-1">
@@ -101,16 +104,19 @@ function BookCard({ item, progress, onRemove }: { item: LibraryItem; progress?: 
   );
 }
 
-function Section({ title, items, progressMap, onRemove }: { title: string; items: LibraryItem[]; progressMap: Record<string, number>; onRemove?: (id: string) => void }) {
-  if (!items.length) return null;
+function Section({ title, items = [], progressMap = {}, onRemove }: { title: string; items?: LibraryItem[]; progressMap?: Record<string, number>; onRemove?: (id: string) => void }) {
   return (
     <div className="space-y-3">
       <div className="px-1 font-semibold text-lg">{title}</div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-        {items.map((it) => (
-          <BookCard key={it.id} item={it} progress={progressMap[it.id] ?? progressMap[it.url ?? ""]} onRemove={onRemove} />
-        ))}
-      </div>
+      {items.length === 0 ? (
+        <div className="px-1 text-sm text-muted-foreground">No items yet.</div>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+          {items.map((it) => (
+            <BookCard key={it.id ?? it.url} item={it} progress={progressMap[it.id] ?? progressMap[it.url ?? ""]} onRemove={onRemove} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -120,11 +126,17 @@ export default function LibraryPage() {
   const hiddenHostRef = React.useRef<HTMLDivElement>(null);
   const [library, setLibrary] = React.useState<LibraryItem[]>([]);
   const [sampleCovers, setSampleCovers] = React.useState<Record<string, string>>({});
-  const progressMap = getProgressMap();
+  const [progressMap, setProgressMap] = React.useState<Record<string, number>>({});
+  const [isMounted, setIsMounted] = React.useState(false);
 
   React.useEffect(() => {
     const saved = getLibrary();
     setLibrary(saved);
+    setProgressMap(getProgressMap());
+  }, []);
+
+  React.useEffect(() => {
+    setIsMounted(true);
   }, []);
 
   // Extract cover image by using the foliate-view web component offscreen and returning a data URL
@@ -232,14 +244,34 @@ export default function LibraryPage() {
     toast.success("Removed from library");
   };
 
-  const continueItems = library
-    .concat(SAMPLES)
-    .filter((it) => {
-      const key = it.id || it.url || "";
-      const p = progressMap[key] ?? progressMap[it.url ?? ""];
-      return typeof p === "number" && p > 0 && p < 0.999;
-    })
-    .slice(0, 12);
+  const onRemoveFromContinue = (id: string) => {
+    // Clear progress for both possible keys (id and url-based key)
+    setProgress(id, 0);
+    setProgressMap((prev) => ({ ...prev, [id]: 0 }));
+    const libItem = library.find((it) => it.id === id);
+    const altKey = libItem?.url ?? "";
+    if (altKey) {
+      setProgress(altKey, 0);
+      setProgressMap((prev) => ({ ...prev, [altKey]: 0 }));
+    }
+    toast.success("Removed from Continue Reading");
+  };
+
+  const continueItems = React.useMemo(() => {
+    if (!isMounted) return [] as LibraryItem[];
+    return library
+      .concat(SAMPLES)
+      .filter((it) => {
+        const key = it.id || it.url || "";
+        const p = progressMap[key] ?? progressMap[it.url ?? ""];
+        return typeof p === "number" && p > 0 && p < 0.999;
+      })
+      .slice(0, 12)
+      .map((it) => {
+        const cover = it.cover ?? sampleCovers[it.id] ?? sampleCovers[it.url ?? ""];
+        return cover ? { ...it, cover } : it;
+      });
+  }, [isMounted, library, progressMap, sampleCovers]);
 
   // Prefetch sample covers lazily
   React.useEffect(() => {
@@ -276,7 +308,7 @@ export default function LibraryPage() {
         </div>
       </header>
       <main className="container mx-auto px-4 py-6 space-y-10">
-        <Section title="Continue Reading" items={continueItems} progressMap={progressMap} />
+        <Section title="Continue Reading" items={continueItems} progressMap={progressMap} onRemove={onRemoveFromContinue} />
         <Section title="My Library" items={library} progressMap={progressMap} onRemove={onRemove} />
         <Section title="Sample Books" items={SAMPLES.map((s)=> ({...s, cover: sampleCovers[s.id]}))} progressMap={progressMap} />
       </main>

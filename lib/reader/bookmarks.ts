@@ -11,6 +11,8 @@ export type Bookmark = {
   label: string;       // e.g. "Chapter 5" or "Page 12"
   target: BookmarkTarget;
   snippet?: string;    // optional short quote
+  // Optional hierarchical chapter breadcrumb, e.g., ["Part I", "Chapter 3", "Section 2"]
+  chapterPath?: string[];
 };
 
 const KEY = "storytime.bookmarks.v1";
