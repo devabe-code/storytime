@@ -308,6 +308,29 @@ export default function ReaderRoutePage() {
   const [letterSpacing, setLetterSpacing] = useState<number>(0);
   const [customFont, setCustomFont] = useState<{ family: string; url: string; format?: string } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // Layout settings
+  const [overrideLayout, setOverrideLayout] = useState(false);
+  const [paragraphMargin, setParagraphMargin] = useState(0.5); // em
+  const [paragraphLineSpacing, setParagraphLineSpacing] = useState(1.4);
+  const [paragraphWordSpacing, setParagraphWordSpacing] = useState(0);
+  const [paragraphLetterSpacing, setParagraphLetterSpacing] = useState(0);
+  const [textIndent, setTextIndent] = useState(0);
+  const [pageMarginTop, setPageMarginTop] = useState(48);
+  const [pageMarginBottom, setPageMarginBottom] = useState(48);
+  const [pageMarginLeft, setPageMarginLeft] = useState(48);
+  const [pageMarginRight, setPageMarginRight] = useState(48);
+  const [columnGapPct, setColumnGapPct] = useState(7); // aligns with paginator default
+  const [maxColumns, setMaxColumns] = useState(2);
+  const [maxInlineSize, setMaxInlineSize] = useState(720);
+  const [maxBlockSize, setMaxBlockSize] = useState(1440);
+  const [showTopBar, setShowTopBar] = useState(true);
+  const [showBottomBar, setShowBottomBar] = useState(true);
+  const [showRemainingTime, setShowRemainingTime] = useState(false);
+  const [showRemainingPages, setShowRemainingPages] = useState(false);
+  const [showReadingProgress, setShowReadingProgress] = useState(true);
+  const [progressStyle, setProgressStyle] = useState<"percent" | "page">("percent");
+  const [applyInScrollMode, setApplyInScrollMode] = useState(true);
   const [bookId, setBookId] = useState<string>("");
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
 
@@ -327,8 +350,32 @@ export default function ReaderRoutePage() {
   }, [customFont]);
 
   useEffect(() => {
-    if (view) view.renderer?.setStyles?.(readerCSS({ spacing, justify, hyphenate, fontPercent, overrideFont, fontFamily: customFont?.family ?? fontFamily, fontWeight, letterSpacing, customFontCSS }));
-  }, [view, spacing, justify, hyphenate, fontPercent, overrideFont, fontFamily, fontWeight, letterSpacing, customFontCSS, customFont]);
+    if (!view) return;
+    view.renderer?.setStyles?.(readerCSS({ spacing, justify, hyphenate, fontPercent, overrideFont, fontFamily: customFont?.family ?? fontFamily, fontWeight, letterSpacing, customFontCSS }));
+    // Layout overrides via foliate-paginator attributes and CSS variables
+    if (overrideLayout || (flow === "scrolled" && applyInScrollMode)) {
+      const r = view.renderer as any;
+      r?.setAttribute?.("gap", `${columnGapPct}%`);
+      r?.setAttribute?.("margin", `${Math.max(pageMarginTop, pageMarginBottom)}px`);
+      r?.setAttribute?.("max-inline-size", `${maxInlineSize}px`);
+      r?.setAttribute?.("max-block-size", `${maxBlockSize}px`);
+      r?.setAttribute?.("max-column-count", `${maxColumns}`);
+      // Paragraph-level CSS
+      const family = customFont?.family ?? fontFamily;
+      const layoutCss = `
+        ${overrideFont ? `html, body, body *:not(i):not(em):not(svg):not([style*="font-family"]) { font-family: ${JSON.stringify(family)}, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Noto Sans", "Liberation Sans", sans-serif !important; }` : ``}
+        p, li, blockquote, dd {
+          margin-block: ${paragraphMargin}em;
+          line-height: ${paragraphLineSpacing};
+          word-spacing: ${paragraphWordSpacing}px;
+          letter-spacing: ${paragraphLetterSpacing}px;
+          text-indent: ${textIndent}em;
+        }
+        @page { margin: ${pageMarginTop}px ${pageMarginRight}px ${pageMarginBottom}px ${pageMarginLeft}px; }
+      `;
+      (view.renderer as any)?.setStyles?.([customFontCSS ?? "", layoutCss]);
+    }
+  }, [view, spacing, justify, hyphenate, fontPercent, overrideFont, fontFamily, letterSpacing, customFontCSS, customFont, paragraphMargin, paragraphLineSpacing, paragraphWordSpacing, paragraphLetterSpacing, textIndent, pageMarginTop, pageMarginBottom, pageMarginLeft, pageMarginRight, columnGapPct, maxColumns, maxInlineSize, maxBlockSize, flow, applyInScrollMode]);
 
 
 
@@ -746,9 +793,12 @@ export default function ReaderRoutePage() {
             fontPercent={fontPercent}
           />
 
+          {showTopBar && null /* top bar already rendered */}
           <ReaderSurface containerRef={containerRef} onDrop={onDrop} onDragOver={onDragOver} />
 
-          <BottomProgress fraction={fraction} locLabel={locLabel} onChange={(v)=> view?.goToFraction?.(v)} />
+          {showBottomBar && (
+            <BottomProgress fraction={fraction} locLabel={progressStyle === "percent" ? locLabel : (lastRelocateRef.current?.pageItem?.label ? `Page ${lastRelocateRef.current.pageItem.label}` : locLabel)} onChange={(v)=> view?.goToFraction?.(v)} />
+          )}
 
           <SettingsDialog
             open={settingsOpen}
@@ -783,6 +833,48 @@ export default function ReaderRoutePage() {
                 toast.error("Failed to add custom font");
               }
             }}
+            overrideLayout={overrideLayout}
+            setOverrideLayout={setOverrideLayout}
+            paragraphMargin={paragraphMargin}
+            setParagraphMargin={setParagraphMargin}
+            paragraphLineSpacing={paragraphLineSpacing}
+            setParagraphLineSpacing={setParagraphLineSpacing}
+            paragraphWordSpacing={paragraphWordSpacing}
+            setParagraphWordSpacing={setParagraphWordSpacing}
+            paragraphLetterSpacing={paragraphLetterSpacing}
+            setParagraphLetterSpacing={setParagraphLetterSpacing}
+            textIndent={textIndent}
+            setTextIndent={setTextIndent}
+            pageMarginTop={pageMarginTop}
+            setPageMarginTop={setPageMarginTop}
+            pageMarginBottom={pageMarginBottom}
+            setPageMarginBottom={setPageMarginBottom}
+            pageMarginLeft={pageMarginLeft}
+            setPageMarginLeft={setPageMarginLeft}
+            pageMarginRight={pageMarginRight}
+            setPageMarginRight={setPageMarginRight}
+            columnGapPct={columnGapPct}
+            setColumnGapPct={setColumnGapPct}
+            maxColumns={maxColumns}
+            setMaxColumns={setMaxColumns}
+            maxInlineSize={maxInlineSize}
+            setMaxInlineSize={setMaxInlineSize}
+            maxBlockSize={maxBlockSize}
+            setMaxBlockSize={setMaxBlockSize}
+            showTopBar={showTopBar}
+            setShowTopBar={setShowTopBar}
+            showBottomBar={showBottomBar}
+            setShowBottomBar={setShowBottomBar}
+            showRemainingTime={showRemainingTime}
+            setShowRemainingTime={setShowRemainingTime}
+            showRemainingPages={showRemainingPages}
+            setShowRemainingPages={setShowRemainingPages}
+            showReadingProgress={showReadingProgress}
+            setShowReadingProgress={setShowReadingProgress}
+            progressStyle={progressStyle}
+            setProgressStyle={setProgressStyle}
+            applyInScrollMode={applyInScrollMode}
+            setApplyInScrollMode={setApplyInScrollMode}
           />
         </main>
 
