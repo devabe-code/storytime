@@ -10,6 +10,7 @@ import { Slider } from "@/components/ui/slider";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Minus, Plus } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
 
 // ————————————————————————————————————————————————————————————
 // Small utilities to mirror the compact “image settings” modal style
@@ -17,20 +18,30 @@ import { Minus, Plus } from "lucide-react";
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mt-6 border-t pt-3">
+    <motion.div 
+      className="mt-6 border-t pt-3"
+      initial={{ opacity: 0, x: -20 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.3, ease: "easeOut" }}
+    >
       <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
         {children}
       </h3>
-    </div>
+    </motion.div>
   );
 }
 
 function Row({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between py-2.5">
+    <motion.div 
+      className="flex items-center justify-between py-2.5"
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2, ease: "easeOut" }}
+    >
       <Label className="text-sm font-normal text-muted-foreground">{label}</Label>
       <div className="flex items-center gap-2">{children}</div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -204,6 +215,9 @@ export function SettingsDialog({
   setProgressStyle,
   applyInScrollMode,
   setApplyInScrollMode,
+  // Theme settings
+  backgroundColor,
+  setBackgroundColor,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -268,8 +282,11 @@ export function SettingsDialog({
   setProgressStyle: (v: "percent" | "page") => void;
   applyInScrollMode: boolean;
   setApplyInScrollMode: (v: boolean) => void;
+  backgroundColor: string;
+  setBackgroundColor: (v: string) => void;
 }) {
   const [customFamily, setCustomFamily] = React.useState("");
+  const [activeTab, setActiveTab] = React.useState("font");
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
   const triggerUpload = () => fileInputRef.current?.click();
@@ -282,12 +299,143 @@ export function SettingsDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-xs sm:max-w-4xl overflow-hidden rounded-xl shadow-xl">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95, y: 20 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.95, y: 20 }}
+          transition={{ duration: 0.3, ease: "easeOut" }}
+        >
         {/* Tabs header */}
         <DialogHeader>
           <DialogTitle>Reader Settings</DialogTitle>
         </DialogHeader>
+          
+          {/* Persistent Live Preview */}
+          <div className="px-6 py-4 border-b bg-muted/30">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium text-muted-foreground">Live Preview</h3>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span className="inline-flex items-center gap-1">
+                  <span className="h-2 w-2 rounded-full bg-blue-400"></span>
+                  {overrideFont ? "Font Override" : "Default Font"}
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <span className="h-2 w-2 rounded-full bg-green-400"></span>
+                  {overrideLayout ? "Layout Override" : "Default Layout"}
+                </span>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Text Preview */}
+              <div className="space-y-2">
+                <div className="text-xs font-medium text-muted-foreground">Text Appearance</div>
+                <div 
+                  className="rounded-lg border-2 border-border p-3 min-h-[80px] relative overflow-hidden"
+                  style={{ backgroundColor: backgroundColor }}
+                >
+                  <div 
+                    className="text-sm leading-relaxed"
+                    style={{ 
+                      color: (() => {
+                        const hex = backgroundColor.replace('#', '');
+                        const r = parseInt(hex.substr(0, 2), 16);
+                        const g = parseInt(hex.substr(2, 2), 16);
+                        const b = parseInt(hex.substr(4, 2), 16);
+                        const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+                        return brightness < 128 ? '#ffffff' : '#000000';
+                      })(),
+                      fontFamily: overrideFont ? (customFont?.family ?? fontFamily) : 'inherit',
+                      fontSize: `${fontPercent}%`,
+                      fontWeight: overrideFont ? fontWeight : 'inherit',
+                      lineHeight: lineHeight,
+                      letterSpacing: `${letterSpacing}px`,
+                      textAlign: justify ? 'justify' : 'left'
+                    }}
+                  >
+                    <p className="mb-1">
+                      This preview shows how your text will appear with the current settings.
+                    </p>
+                    <p className="text-xs opacity-80">
+                      Font: {overrideFont ? (customFont?.family ?? fontFamily) : 'Book Default'} • Size: {fontPercent}% • Line Height: {lineHeight.toFixed(2)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Layout Preview */}
+              <div className="space-y-2">
+                <div className="text-xs font-medium text-muted-foreground">Page Layout</div>
+                <div 
+                  className="rounded-lg border-2 border-border p-3 min-h-[80px] relative overflow-hidden"
+                  style={{ backgroundColor: backgroundColor }}
+                >
+                  <div 
+                    className="text-xs leading-relaxed"
+                    style={{ 
+                      color: (() => {
+                        const hex = backgroundColor.replace('#', '');
+                        const r = parseInt(hex.substr(0, 2), 16);
+                        const g = parseInt(hex.substr(2, 2), 16);
+                        const b = parseInt(hex.substr(4, 2), 16);
+                        const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+                        return brightness < 128 ? '#ffffff' : '#000000';
+                      })()
+                    }}
+                  >
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-xs">
+                        <span>Margins: {pageMarginTop}px top, {pageMarginBottom}px bottom</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span>Columns: {maxColumns} max</span>
+                        <span>Gap: {columnGapPct}%</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span>Width: {maxInlineSize}px</span>
+                        <span>Height: {maxBlockSize}px</span>
+                      </div>
+                      <div className="text-xs opacity-80 mt-2">
+                        {overrideLayout ? 'Custom layout applied' : 'Book default layout'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            {/* Current Settings Summary */}
+            <div className="mt-3 pt-3 border-t border-border/50">
+              <div className="flex flex-wrap gap-2 text-xs">
+                <span className="px-2 py-1 rounded bg-background/80 text-foreground/80">
+                  Background: {backgroundColor}
+                </span>
+                <span className="px-2 py-1 rounded bg-background/80 text-foreground/80">
+                  Text: {(() => {
+                    const hex = backgroundColor.replace('#', '');
+                    const r = parseInt(hex.substr(0, 2), 16);
+                    const g = parseInt(hex.substr(2, 2), 16);
+                    const b = parseInt(hex.substr(4, 2), 16);
+                    const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+                    return brightness < 128 ? 'White' : 'Black';
+                  })()}
+                </span>
+                {overrideFont && (
+                  <span className="px-2 py-1 rounded bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                    Font: {customFont?.family ?? fontFamily}
+                  </span>
+                )}
+                {overrideLayout && (
+                  <span className="px-2 py-1 rounded bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                    Layout: Custom
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+          
         <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-background/60 px-6 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/50">
-          <Tabs defaultValue="font" className="w-full">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList
               className="flex h-9 w-full gap-1 rounded-md border bg-muted/50 p-1 text-sm"
             >
@@ -311,10 +459,18 @@ export function SettingsDialog({
               </TabsTrigger>
             </TabsList>
 
-            {/* Content area */}
+              {/* Content area with smooth height animations */}
             <div className="max-h-[60vh] overflow-y-auto px-6 pb-6 pt-4">
-              {/* FONT */}
-              <TabsContent value="font" className="m-0 space-y-2">
+                <AnimatePresence mode="wait">
+                  {activeTab === "font" && (
+                    <motion.div
+                      key="font"
+                      initial={{ opacity: 0, y: 20, height: 0 }}
+                      animate={{ opacity: 1, y: 0, height: "auto" }}
+                      exit={{ opacity: 0, y: -20, height: 0 }}
+                      transition={{ duration: 0.3, ease: "easeInOut" }}
+                      className="space-y-2"
+                    >
                 <Row label="Override Book Font">
                   <Switch id="override-font" checked={overrideFont} onCheckedChange={setOverrideFont} />
                 </Row>
@@ -412,10 +568,18 @@ export function SettingsDialog({
                     Upload .ttf or .otf and then select it above.
                   </p>
                 </div>
-              </TabsContent>
+                    </motion.div>
+                  )}
 
-              {/* LAYOUT */}
-              <TabsContent value="layout" className="m-0 space-y-2">
+                  {activeTab === "layout" && (
+                    <motion.div
+                      key="layout"
+                      initial={{ opacity: 0, y: 20, height: 0 }}
+                      animate={{ opacity: 1, y: 0, height: "auto" }}
+                      exit={{ opacity: 0, y: -20, height: 0 }}
+                      transition={{ duration: 0.3, ease: "easeInOut" }}
+                      className="space-y-2"
+                    >
                 <Row label="Override Book Layout">
                   <Switch id="override-layout" checked={overrideLayout} onCheckedChange={setOverrideLayout} />
                 </Row>
@@ -533,24 +697,448 @@ export function SettingsDialog({
                 <Row label="Apply in Scroll Mode">
                   <Switch checked={applyInScrollMode} onCheckedChange={setApplyInScrollMode} />
                 </Row>
-              </TabsContent>
+                    </motion.div>
+                  )}
 
-              {/* PLACEHOLDERS */}
-              <TabsContent value="theme" className="m-0 text-sm text-muted-foreground">
-                Theme settings coming soon.
-              </TabsContent>
-              <TabsContent value="behavior" className="m-0 text-sm text-muted-foreground">
+                  {activeTab === "theme" && (
+                    <motion.div
+                      key="theme"
+                      initial={{ opacity: 0, y: 20, height: 0 }}
+                      animate={{ opacity: 1, y: 0, height: "auto" }}
+                      exit={{ opacity: 0, y: -20, height: 0 }}
+                      transition={{ duration: 0.3, ease: "easeInOut" }}
+                      className="space-y-2"
+                    >
+                      {/* Warning when overrides are active */}
+                      {(overrideFont || overrideLayout) && (
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.95 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950"
+                        >
+                          <div className="flex items-start gap-2">
+                            <div className="text-amber-600 dark:text-amber-400">⚠️</div>
+                            <div className="text-sm">
+                              <p className="font-medium text-amber-800 dark:text-amber-200">
+                                {overrideFont && overrideLayout 
+                                  ? "Font and Layout overrides are active" 
+                                  : overrideFont 
+                                    ? "Font override is active" 
+                                    : "Layout override is active"
+                                }
+                              </p>
+                              <p className="text-amber-700 dark:text-amber-300 mt-1">
+                                Background color changes will still work, but some book-specific styling may override certain visual elements.
+                              </p>
+                            </div>
+                          </div>
+                        </motion.div>
+                      )}
+                      
+                      <SectionTitle>Page Background</SectionTitle>
+                      
+                      {/* Override Status */}
+                      {(overrideFont || overrideLayout) && (
+                        <div className="mb-4 flex flex-wrap gap-2">
+                          {overrideFont && (
+                            <motion.span
+                              initial={{ opacity: 0, scale: 0.8 }}
+                              animate={{ opacity: 1, scale: 1 }}
+                              className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-1 text-xs font-medium text-blue-800 dark:bg-blue-900 dark:text-blue-200"
+                            >
+                              <span className="h-2 w-2 rounded-full bg-blue-400"></span>
+                              Font Override Active
+                            </motion.span>
+                          )}
+                          {overrideLayout && (
+                            <motion.span
+                              initial={{ opacity: 0, scale: 0.8 }}
+                              animate={{ opacity: 1, scale: 1 }}
+                              transition={{ delay: 0.1 }}
+                              className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800 dark:bg-green-900 dark:text-green-200"
+                            >
+                              <span className="h-2 w-2 rounded-full bg-green-400"></span>
+                              Layout Override Active
+                            </motion.span>
+                          )}
+                        </div>
+                      )}
+                      
+                      <Row label="Background Color">
+                        <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2">
+                            <label htmlFor="color-picker" className="sr-only">Choose background color</label>
+                            <input
+                              id="color-picker"
+                              type="color"
+                              value={backgroundColor}
+                              onChange={(e) => setBackgroundColor(e.target.value)}
+                              className="h-8 w-16 rounded border cursor-pointer"
+                              aria-label="Choose background color"
+                            />
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <label htmlFor="hex-input" className="sr-only">Enter hex color code</label>
+                            <Input
+                              id="hex-input"
+                              type="text"
+                              value={backgroundColor}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                // Only update if it's a valid hex color or empty (to allow typing)
+                                if (value === "" || /^#[0-9A-Fa-f]{0,6}$/.test(value)) {
+                                  setBackgroundColor(value);
+                                }
+                              }}
+                              onBlur={(e) => {
+                                const value = e.target.value;
+                                // If the input is not a complete hex color, reset to current value
+                                if (!/^#[0-9A-Fa-f]{6}$/.test(value)) {
+                                  setBackgroundColor(backgroundColor);
+                                }
+                              }}
+                              placeholder="#ffffff"
+                              className="h-8 w-24"
+                              aria-label="Enter hex color code"
+                            />
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setBackgroundColor("#ffffff")}
+                            className="h-8"
+                            aria-label="Reset to default white background"
+                          >
+                            Reset
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              const randomColor = '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0');
+                              setBackgroundColor(randomColor);
+                            }}
+                            className="h-8"
+                            aria-label="Generate random background color"
+                          >
+                            Random
+                          </Button>
+                        </div>
+                      </Row>
+                      
+                      <SectionTitle>Preview</SectionTitle>
+                      <div className="py-2.5">
+                        <div className="flex items-center gap-3 mb-2">
+                          <div className="text-sm text-muted-foreground">Background:</div>
+                          <div 
+                            className="h-12 w-24 rounded border-2 border-border flex items-center justify-center text-xs font-mono"
+                            style={{ backgroundColor: backgroundColor }}
+                          >
+                            {backgroundColor}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <div className="text-sm text-muted-foreground">Text Color:</div>
+                          <div 
+                            className="h-8 w-20 rounded border-2 border-border flex items-center justify-center text-xs font-mono"
+                            style={{ 
+                              backgroundColor: backgroundColor,
+                              color: (() => {
+                                const hex = backgroundColor.replace('#', '');
+                                const r = parseInt(hex.substr(0, 2), 16);
+                                const g = parseInt(hex.substr(2, 2), 16);
+                                const b = parseInt(hex.substr(4, 2), 16);
+                                const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+                                return brightness < 128 ? '#ffffff' : '#000000';
+                              })()
+                            }}
+                          >
+                            {(() => {
+                              const hex = backgroundColor.replace('#', '');
+                              const r = parseInt(hex.substr(0, 2), 16);
+                              const g = parseInt(hex.substr(2, 2), 16);
+                              const b = parseInt(hex.substr(4, 2), 16);
+                              const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+                              return brightness < 128 ? '#ffffff' : '#000000';
+                            })()}
+                          </div>
+                        </div>
+                      </div>
+                      <SectionTitle>Quick Themes</SectionTitle>
+                      <div className="flex gap-2 py-2.5">
+                        <motion.div 
+                          className="flex-1"
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                        >
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setBackgroundColor("#ffffff")}
+                            className="w-full"
+                          >
+                            Light Theme
+                          </Button>
+                        </motion.div>
+                        <motion.div 
+                          className="flex-1"
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                        >
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setBackgroundColor("#1a1a1a")}
+                            className="w-full"
+                          >
+                            Dark Theme
+                          </Button>
+                        </motion.div>
+                      </div>
+                      
+                      <SectionTitle>Preset Colors</SectionTitle>
+                      <div className="grid grid-cols-6 gap-2 py-2.5">
+                        {[
+                          "#ffffff", // White
+                          "#f8f9fa", // Light Gray
+                          "#e9ecef", // Gray
+                          "#fefefe", // Off White
+                          "#fafafa", // Very Light Gray
+                          "#f5f5f5", // Light Gray
+                          "#e6f3ff", // Light Sky Blue
+                          "#f0fff0", // Honeydew
+                          "#fff8dc", // Cornsilk
+                          "#fffaf0", // Floral White
+                          "#fdf5e6", // Old Lace
+                          "#f5f5dc", // Beige
+                        ].map((color, index) => (
+                          <motion.button
+                            key={color}
+                            initial={{ opacity: 0, scale: 0.8 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            transition={{ 
+                              duration: 0.2, 
+                              delay: index * 0.02,
+                              ease: "easeOut"
+                            }}
+                            whileHover={{ scale: 1.1, rotate: 2 }}
+                            whileTap={{ scale: 0.95 }}
+                            type="button"
+                            className={`h-8 w-8 rounded border-2 transition-all focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${
+                              backgroundColor === color 
+                                ? "border-primary ring-2 ring-primary ring-offset-1" 
+                                : "border-border"
+                            }`}
+                            style={{ backgroundColor: color }}
+                            onClick={() => setBackgroundColor(color)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                setBackgroundColor(color);
+                              }
+                            }}
+                            title={`${color} - Click to select`}
+                            aria-label={`Select ${color} as background color`}
+                            tabIndex={0}
+                          />
+                        ))}
+                      </div>
+                      
+                      <SectionTitle>Dark Theme</SectionTitle>
+                      <div className="grid grid-cols-6 gap-2 py-2.5">
+                        {[
+                          "#1a1a1a", // Dark Gray
+                          "#2d2d2d", // Charcoal
+                          "#3a3a3a", // Medium Dark Gray
+                          "#1e1e1e", // Very Dark Gray
+                          "#2b2b2b", // Dark Charcoal
+                          "#333333", // Dark Gray
+                          "#1f1f1f", // Almost Black
+                          "#2a2a2a", // Dark Gray
+                          "#404040", // Medium Gray
+                          "#1c1c1c", // Very Dark
+                          "#2f2f2f", // Dark
+                          "#262626", // Dark
+                        ].map((color, index) => (
+                          <motion.button
+                            key={color}
+                            initial={{ opacity: 0, scale: 0.8 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            transition={{ 
+                              duration: 0.2, 
+                              delay: index * 0.02,
+                              ease: "easeOut"
+                            }}
+                            whileHover={{ scale: 1.1, rotate: 2 }}
+                            whileTap={{ scale: 0.95 }}
+                            type="button"
+                            className={`h-8 w-8 rounded border-2 transition-all focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${
+                              backgroundColor === color 
+                                ? "border-primary ring-2 ring-primary ring-offset-1" 
+                                : "border-border"
+                            }`}
+                            style={{ backgroundColor: color }}
+                            onClick={() => setBackgroundColor(color)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                setBackgroundColor(color);
+                              }
+                            }}
+                            title={`${color} - Click to select`}
+                            aria-label={`Select ${color} as background color`}
+                            tabIndex={0}
+                          />
+                        ))}
+                      </div>
+                      
+                      <SectionTitle>Warm Colors</SectionTitle>
+                      <div className="grid grid-cols-6 gap-2 py-2.5">
+                        {[
+                          "#fff5f5", // Very Light Red
+                          "#fff0f0", // Light Red
+                          "#fef2f2", // Light Red
+                          "#fef7f7", // Very Light Red
+                          "#fff8f8", // Very Light Red
+                          "#fef9f9", // Very Light Red
+                          "#fff9f0", // Light Orange
+                          "#fff7ed", // Light Orange
+                          "#fff4e6", // Light Orange
+                          "#fff2e6", // Light Orange
+                          "#fff8f0", // Very Light Orange
+                          "#fff6f0", // Light Orange
+                        ].map((color, index) => (
+                          <motion.button
+                            key={color}
+                            initial={{ opacity: 0, scale: 0.8 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            transition={{ 
+                              duration: 0.2, 
+                              delay: index * 0.02,
+                              ease: "easeOut"
+                            }}
+                            whileHover={{ scale: 1.1, rotate: 2 }}
+                            whileTap={{ scale: 0.95 }}
+                            type="button"
+                            className={`h-8 w-8 rounded border-2 transition-all focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${
+                              backgroundColor === color 
+                                ? "border-primary ring-2 ring-primary ring-offset-1" 
+                                : "border-border"
+                            }`}
+                            style={{ backgroundColor: color }}
+                            onClick={() => setBackgroundColor(color)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                setBackgroundColor(color);
+                              }
+                            }}
+                            title={`${color} - Click to select`}
+                            aria-label={`Select ${color} as background color`}
+                            tabIndex={0}
+                          />
+                        ))}
+                      </div>
+                      
+                      <SectionTitle>Cool Colors</SectionTitle>
+                      <div className="grid grid-cols-6 gap-2 py-2.5">
+                        {[
+                          "#f0f9ff", // Very Light Blue
+                          "#f0f8ff", // Alice Blue
+                          "#f0f7ff", // Light Blue
+                          "#f0f6ff", // Light Blue
+                          "#f0f5ff", // Light Blue
+                          "#f0f4ff", // Light Blue
+                          "#d4f1f4", // Light Cyan
+                          "#f0fffa", // Light Cyan
+                          "#f0fffd", // Very Light Cyan
+                          "#f0fffe", // Very Light Cyan
+                          "#f0ffff", // Azure
+                          "#b3e5fc", // Light Blue
+                        ].map((color, index) => (
+                          <motion.button
+                            key={color}
+                            initial={{ opacity: 0, scale: 0.8 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            transition={{ 
+                              duration: 0.2, 
+                              delay: index * 0.02,
+                              ease: "easeOut"
+                            }}
+                            whileHover={{ scale: 1.1, rotate: 2 }}
+                            whileTap={{ scale: 0.95 }}
+                            type="button"
+                            className={`h-8 w-8 rounded border-2 transition-all focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${
+                              backgroundColor === color 
+                                ? "border-primary ring-2 ring-primary ring-offset-1" 
+                                : "border-border"
+                            }`}
+                            style={{ backgroundColor: color }}
+                            onClick={() => setBackgroundColor(color)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                setBackgroundColor(color);
+                              }
+                            }}
+                            title={`${color} - Click to select`}
+                            aria-label={`Select ${color} as background color`}
+                            tabIndex={0}
+                          />
+                        ))}
+                      </div>
+                      
+                      <div className="py-2.5">
+                        <p className="text-xs text-muted-foreground">
+                          Choose a background color for the book pages. Use the color picker, enter a hex color code, or select from preset colors.
+                        </p>
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {activeTab === "behavior" && (
+                    <motion.div
+                      key="behavior"
+                      initial={{ opacity: 0, y: 20, height: 0 }}
+                      animate={{ opacity: 1, y: 0, height: "auto" }}
+                      exit={{ opacity: 0, y: -20, height: 0 }}
+                      transition={{ duration: 0.3, ease: "easeInOut" }}
+                      className="text-sm text-muted-foreground"
+                    >
                 Behavior settings coming soon.
-              </TabsContent>
-              <TabsContent value="language" className="m-0 text-sm text-muted-foreground">
+                    </motion.div>
+                  )}
+
+                  {activeTab === "language" && (
+                    <motion.div
+                      key="language"
+                      initial={{ opacity: 0, y: 20, height: 0 }}
+                      animate={{ opacity: 1, y: 0, height: "auto" }}
+                      exit={{ opacity: 0, y: -20, height: 0 }}
+                      transition={{ duration: 0.3, ease: "easeInOut" }}
+                      className="text-sm text-muted-foreground"
+                    >
                 Language settings coming soon.
-              </TabsContent>
-              <TabsContent value="custom" className="m-0 text-sm text-muted-foreground">
+                    </motion.div>
+                  )}
+
+                  {activeTab === "custom" && (
+                    <motion.div
+                      key="custom"
+                      initial={{ opacity: 0, y: 20, height: 0 }}
+                      animate={{ opacity: 1, y: 0, height: "auto" }}
+                      exit={{ opacity: 0, y: -20, height: 0 }}
+                      transition={{ duration: 0.3, ease: "easeInOut" }}
+                      className="text-sm text-muted-foreground"
+                    >
                 Custom settings coming soon.
-              </TabsContent>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
             </div>
           </Tabs>
         </div>
+        </motion.div>
       </DialogContent>
     </Dialog>
   );

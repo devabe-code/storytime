@@ -62,6 +62,7 @@ const readerCSS = ({
   fontWeight,
   letterSpacing,
   customFontCSS,
+  backgroundColor,
 }: {
   spacing: number;
   justify: boolean;
@@ -72,10 +73,65 @@ const readerCSS = ({
   fontWeight: number;
   letterSpacing: number;
   customFontCSS?: string | null;
-}) => `
+  backgroundColor: string;
+}) => {
+  // Calculate if background is dark for text color adjustment
+  const isDark = (() => {
+    const hex = backgroundColor.replace('#', '');
+    const r = parseInt(hex.substr(0, 2), 16);
+    const g = parseInt(hex.substr(2, 2), 16);
+    const b = parseInt(hex.substr(4, 2), 16);
+    const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+    return brightness < 128;
+  })();
+  
+  const textColor = isDark ? '#ffffff' : '#000000';
+  
+  return `
   @namespace epub "http://www.idpf.org/2007/ops";
   ${customFontCSS ?? ""}
-  html { color-scheme: light dark; font-size: ${fontPercent}%; }
+  
+  /* Theme isolation: Book content uses explicit colors, not theme-dependent ones */
+  html { 
+    font-size: ${fontPercent}%; 
+    background-color: ${backgroundColor} !important; 
+    color: ${textColor} !important;
+    /* Remove color-scheme to prevent theme interference */
+    color-scheme: only light;
+  }
+  
+  body { 
+    background-color: ${backgroundColor} !important; 
+    color: ${textColor} !important;
+    /* Ensure body inherits theme isolation */
+    color-scheme: only light;
+  }
+  
+  /* All book content inherits the explicit background */
+  html * { background-color: inherit; }
+  
+  /* Ensure background color is applied to all content containers */
+  div, section, article, aside, header, footer, main, nav, p, span, h1, h2, h3, h4, h5, h6, 
+  li, ul, ol, blockquote, pre, code, table, td, th, tr, caption, thead, tbody, tfoot {
+    background-color: transparent !important;
+  }
+  
+  /* Handle iframes and embedded content */
+  iframe, object, embed {
+    background-color: ${backgroundColor} !important;
+  }
+  
+  /* Ensure text color is properly applied */
+  div, section, article, aside, header, footer, main, nav, p, span, h1, h2, h3, h4, h5, h6, 
+  li, ul, ol, blockquote, pre, code, table, td, th, tr, caption, thead, tbody, tfoot {
+    color: ${textColor} !important;
+  }
+  
+  /* Links should also use explicit colors */
+  a:link, a:visited, a:hover, a:active {
+    color: ${isDark ? '#87ceeb' : '#0066cc'} !important;
+  }
+  
   ${overrideFont ? `
   html, body, body *:not(i):not(em):not(svg):not([style*="font-family"]) {
     font-family: ${JSON.stringify(fontFamily)}, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Noto Sans", "Liberation Sans", sans-serif !important;
@@ -85,7 +141,8 @@ const readerCSS = ({
     letter-spacing: ${letterSpacing}px;
   }
   ` : ""}
-  @media (prefers-color-scheme: dark) { a:link { color: lightblue; } }
+  
+  /* Remove theme-dependent media queries */
   p, li, blockquote, dd {
     line-height: ${spacing};
     text-align: ${justify ? "justify" : "start"};
@@ -107,6 +164,7 @@ const readerCSS = ({
   aside[epub|type~="note"],
   aside[epub|type~="rearnote"] { display: none; }
 `;
+};
 
 // Helpers (robust + CSS/footnote safe)
 // What we consider "readable" text containers:
@@ -333,9 +391,27 @@ export default function ReaderRoutePage() {
   const [applyInScrollMode, setApplyInScrollMode] = useState(true);
   const [bookId, setBookId] = useState<string>("");
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
+  const [backgroundColor, setBackgroundColor] = useState<string>("#ffffff");
 
   const bookIdRef = useRef<string>("");
   const lastRelocateRef = useRef<any | null>(null);
+
+  // Load background color from localStorage on mount
+  useEffect(() => {
+    const savedColor = localStorage.getItem("reader-background-color");
+    if (savedColor) {
+      setBackgroundColor(savedColor);
+    }
+  }, []);
+
+  // Save background color to localStorage when it changes
+  useEffect(() => {
+    localStorage.setItem("reader-background-color", backgroundColor);
+    // Show toast notification for color change
+    if (backgroundColor !== "#ffffff") {
+      toast.success(`Background color changed to ${backgroundColor}`);
+    }
+  }, [backgroundColor]);
 
   useEffect(() => { bookIdRef.current = bookId; }, [bookId]);
 
@@ -351,7 +427,21 @@ export default function ReaderRoutePage() {
 
   useEffect(() => {
     if (!view) return;
-    view.renderer?.setStyles?.(readerCSS({ spacing, justify, hyphenate, fontPercent, overrideFont, fontFamily: customFont?.family ?? fontFamily, fontWeight, letterSpacing, customFontCSS }));
+    
+    // Always apply the base CSS with background color
+    const baseCSS = readerCSS({ 
+      spacing, 
+      justify, 
+      hyphenate, 
+      fontPercent, 
+      overrideFont, 
+      fontFamily: customFont?.family ?? fontFamily, 
+      fontWeight, 
+      letterSpacing, 
+      customFontCSS, 
+      backgroundColor 
+    });
+    
     // Layout overrides via foliate-paginator attributes and CSS variables
     if (overrideLayout || (flow === "scrolled" && applyInScrollMode)) {
       const r = view.renderer as any;
@@ -360,9 +450,11 @@ export default function ReaderRoutePage() {
       r?.setAttribute?.("max-inline-size", `${maxInlineSize}px`);
       r?.setAttribute?.("max-block-size", `${maxBlockSize}px`);
       r?.setAttribute?.("max-column-count", `${maxColumns}`);
-      // Paragraph-level CSS
+      
+      // Create layout CSS that includes background color
       const family = customFont?.family ?? fontFamily;
       const layoutCss = `
+        ${baseCSS}
         ${overrideFont ? `html, body, body *:not(i):not(em):not(svg):not([style*="font-family"]) { font-family: ${JSON.stringify(family)}, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Noto Sans", "Liberation Sans", sans-serif !important; }` : ``}
         p, li, blockquote, dd {
           margin-block: ${paragraphMargin}em;
@@ -373,9 +465,14 @@ export default function ReaderRoutePage() {
         }
         @page { margin: ${pageMarginTop}px ${pageMarginRight}px ${pageMarginBottom}px ${pageMarginLeft}px; }
       `;
+      
+      // Apply the combined CSS
       (view.renderer as any)?.setStyles?.([customFontCSS ?? "", layoutCss]);
+    } else {
+      // No layout overrides, just apply the base CSS
+      view.renderer?.setStyles?.(baseCSS);
     }
-  }, [view, spacing, justify, hyphenate, fontPercent, overrideFont, fontFamily, letterSpacing, customFontCSS, customFont, paragraphMargin, paragraphLineSpacing, paragraphWordSpacing, paragraphLetterSpacing, textIndent, pageMarginTop, pageMarginBottom, pageMarginLeft, pageMarginRight, columnGapPct, maxColumns, maxInlineSize, maxBlockSize, flow, applyInScrollMode]);
+  }, [view, spacing, justify, hyphenate, fontPercent, overrideFont, fontFamily, letterSpacing, customFontCSS, customFont, paragraphMargin, paragraphLineSpacing, paragraphWordSpacing, paragraphLetterSpacing, textIndent, pageMarginTop, pageMarginBottom, pageMarginLeft, pageMarginRight, columnGapPct, maxColumns, maxInlineSize, maxBlockSize, flow, applyInScrollMode, backgroundColor]);
 
 
 
@@ -615,7 +712,7 @@ export default function ReaderRoutePage() {
       setBookId(typeof input === "string" ? input : `upload:${src.name}:${src.size}`);
 
       if (el?.renderer?.setAttribute) el.renderer.setAttribute("flow", flow);
-      el?.renderer?.setStyles?.(readerCSS({ spacing, justify, hyphenate, fontPercent, overrideFont, fontFamily: customFont?.family ?? fontFamily, fontWeight, letterSpacing, customFontCSS }));
+      el?.renderer?.setStyles?.(readerCSS({ spacing, justify, hyphenate, fontPercent, overrideFont, fontFamily: customFont?.family ?? fontFamily, fontWeight, letterSpacing, customFontCSS, backgroundColor }));
 
       // Toast exactly once per new key
       if (openedKeyRef.current !== key) {
@@ -628,7 +725,7 @@ export default function ReaderRoutePage() {
     } finally {
       isOpeningRef.current = false;
     }
-  }, [flow, spacing, justify, hyphenate, handleLoad, handleRelocate, view, sourceKey]);
+  }, [flow, spacing, justify, hyphenate, handleLoad, handleRelocate, view, sourceKey, backgroundColor]);
 
   // Cleanup when component unmounts
   useEffect(() => {
@@ -875,6 +972,8 @@ export default function ReaderRoutePage() {
             setProgressStyle={setProgressStyle}
             applyInScrollMode={applyInScrollMode}
             setApplyInScrollMode={setApplyInScrollMode}
+            backgroundColor={backgroundColor}
+            setBackgroundColor={setBackgroundColor}
           />
         </main>
 

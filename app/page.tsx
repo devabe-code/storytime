@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 import { getLibrary, saveLibrary, getProgressMap, removeFromLibrary, hasUploadWithFingerprint, setProgress, type LibraryItem } from "../lib/library";
 import Image from "next/image";
@@ -299,6 +300,7 @@ export default function LibraryPage() {
         <div className="container mx-auto px-4 h-14 flex items-center justify-between">
           <div className="font-semibold">Storytime</div>
           <div className="flex items-center gap-2">
+            <ThemeToggle />
             <Button variant="outline" onClick={() => fileRef.current?.click()}>Upload</Button>
             <Input type="file" ref={fileRef} onChange={onUpload} className="hidden" />
             <Button asChild>

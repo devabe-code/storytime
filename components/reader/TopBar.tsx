@@ -6,6 +6,7 @@ import { List, ChevronLeft, ChevronRight, Upload, PanelLeftOpen, PanelLeftClose,
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { TocList, TOCItem } from "./TocList";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 import { useSidebar } from "@/components/ui/sidebar";
 
@@ -96,18 +97,7 @@ export function TopBar({
 
       {/* Settings */}
       <div className="flex items-center gap-2">
-        {/* Font size controls */}
-        <div className="hidden sm:flex items-center gap-1 mr-1" aria-label="Font size">
-          <Button variant="outline" size="icon" onClick={onFontSmaller} title="Decrease font size">
-            A-
-          </Button>
-          <div className="text-xs w-10 text-center tabular-nums" title="Font size">
-            {fontPercent}%
-          </div>
-          <Button variant="outline" size="icon" onClick={onFontLarger} title="Increase font size">
-            A+
-          </Button>
-        </div>
+        <ThemeToggle />
         <Button variant="outline" onClick={onOpenSettings}>Settings</Button>
         <Button variant="outline" size="sm" onClick={onChooseFile}><Upload className="mr-2 h-4 w-4"/>Open</Button>
       </div>
